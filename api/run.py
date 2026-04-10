@@ -1,3 +1,4 @@
+from flask import Flask, jsonify
 from serpapi import GoogleSearch
 import requests
 from bs4 import BeautifulSoup
@@ -5,11 +6,12 @@ import spacy
 import os
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
-import json
+
+app = Flask(__name__)
 
 nlp = spacy.load("en_core_web_sm")
-
 SERP_API_KEY = os.environ.get("SERP_API_KEY")
+
 
 def get_text(url):
     try:
@@ -21,12 +23,14 @@ def get_text(url):
     except:
         return ""
 
+
 def extract_entities(text):
     doc = nlp(text)
     return [(ent.text, ent.label_) for ent in doc.ents]
 
 
-def handler(request):
+@app.route("/api/run", methods=["GET"])
+def run():
     params = {
         "q": "4G吃到飽",
         "hl": "zh-tw",
@@ -46,10 +50,8 @@ def handler(request):
     texts = [get_text(u) for u in urls]
     entities_list = [extract_entities(t) for t in texts]
 
-    # entity count
     entity_counts = [len(e) for e in entities_list]
 
-    # clustering
     texts_clean = [" ".join([e[0] for e in ents]) for ents in entities_list]
     vectorizer = TfidfVectorizer()
     X = vectorizer.fit_transform(texts_clean)
@@ -66,7 +68,4 @@ def handler(request):
             "cluster": int(clusters[i])
         })
 
-    return {
-        "statusCode": 200,
-        "body": json.dumps(result, ensure_ascii=False)
-    }
+    return jsonify(result)
