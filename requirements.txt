@@ -1,9 +1,8 @@
-fastapi
-uvicorn
-requests
-beautifulsoup4
-pandas
-scikit-learn
-spacy
-serpapi
 google-search-results
+beautifulsoup4
+requests
+pandas
+spacy
+scikit-learn
+gspread
+oauth2client
