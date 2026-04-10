@@ -2,75 +2,71 @@ from serpapi import GoogleSearch
 import requests
 from bs4 import BeautifulSoup
 import spacy
+import os
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
+import json
 
 nlp = spacy.load("en_core_web_sm")
 
-
-def search_google(query):
-    params = {
-        "q": query,
-        "hl": "zh-tw",
-        "gl": "tw",
-        "google_domain": "google.com.tw",
-        "api_key": "你的SerpAPI KEY"
-    }
-
-    search = GoogleSearch(params)
-    results = search.get_dict()
-    organic = results.get("organic_results", [])[:5]
-
-    return [
-        {
-            "title": r["title"],
-            "url": r["link"]
-        }
-        for r in organic if "link" in r
-    ]
-
+SERP_API_KEY = os.environ.get("SERP_API_KEY")
 
 def get_text(url):
     try:
         res = requests.get(url, timeout=10)
         soup = BeautifulSoup(res.text, "html.parser")
-        return " ".join([p.get_text() for p in soup.find_all("p")])[:3000]
+        paragraphs = soup.find_all("p")
+        text = " ".join([p.get_text() for p in paragraphs])
+        return text[:5000]
     except:
         return ""
-
 
 def extract_entities(text):
     doc = nlp(text)
     return [(ent.text, ent.label_) for ent in doc.ents]
 
 
-def analyze(query):
-    results = search_google(query)
+def handler(request):
+    params = {
+        "q": "4G吃到飽",
+        "hl": "zh-tw",
+        "gl": "tw",
+        "google_domain": "google.com.tw",
+        "api_key": SERP_API_KEY
+    }
 
-    texts = []
-    for r in results:
-        texts.append(get_text(r["url"]))
+    search = GoogleSearch(params)
+    results = search.get_dict()
 
-    entities = [extract_entities(t) for t in texts]
+    organic = results.get("organic_results", [])[:10]
 
-    cleaned = [" ".join([e[0] for e in ents]) for ents in entities]
+    urls = [r["link"] for r in organic if "link" in r]
+    titles = [r["title"] for r in organic if "title" in r]
 
-    if len(cleaned) == 0:
-        return {"error": "no data"}
+    texts = [get_text(u) for u in urls]
+    entities_list = [extract_entities(t) for t in texts]
 
+    # entity count
+    entity_counts = [len(e) for e in entities_list]
+
+    # clustering
+    texts_clean = [" ".join([e[0] for e in ents]) for ents in entities_list]
     vectorizer = TfidfVectorizer()
-    X = vectorizer.fit_transform(cleaned)
+    X = vectorizer.fit_transform(texts_clean)
 
-    kmeans = KMeans(n_clusters=2, random_state=42, n_init=10)
+    kmeans = KMeans(n_clusters=3, random_state=42)
     clusters = kmeans.fit_predict(X)
 
-    output = []
-    for i, r in enumerate(results):
-        output.append({
-            "title": r["title"],
-            "url": r["url"],
-            "cluster": int(clusters[i]) if i < len(clusters) else -1,
-            "entity_count": len(entities[i]) if i < len(entities) else 0
+    result = []
+    for i in range(len(urls)):
+        result.append({
+            "title": titles[i],
+            "url": urls[i],
+            "entity_count": entity_counts[i],
+            "cluster": int(clusters[i])
         })
 
-    return output
+    return {
+        "statusCode": 200,
+        "body": json.dumps(result, ensure_ascii=False)
+    }
